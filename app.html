@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VoiceForge — Neural Voice Generation</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #09090b;
+      --bg-elevated: #111113;
+      --fg: #fafafa;
+      --muted: #71717a;
+      --accent: #a1a1aa;
+      --border: #27272a;
+      --glow: rgba(255, 255, 255, 0.03);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Subtle grain texture */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+      opacity: 0.02;
+      pointer-events: none;
+      z-index: 1000;
+    }
+
+    /* Center light glow */
+    .hero-glow {
+      position: absolute;
+      width: 800px;
+      height: 800px;
+      background: radial-gradient(circle, rgba(255,255,255,0.04) 0%, transparent 60%);
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+
+    /* Reveal animations */
+    .reveal {
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1),
+                  transform 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .reveal-delay-1 { transition-delay: 0.1s; }
+    .reveal-delay-2 { transition-delay: 0.2s; }
+    .reveal-delay-3 { transition-delay: 0.3s; }
+    .reveal-delay-4 { transition-delay: 0.4s; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .reveal {
+        opacity: 1;
+        transform: none;
+        transition: none;
+      }
+    }
+
+    /* Buttons */
+    .btn-primary {
+      background: var(--fg);
+      color: var(--bg);
+      font-weight: 500;
+      font-size: 14px;
+      padding: 12px 28px;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn-primary::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(255,255,255,0.15) 0%, transparent 100%);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 0 50px rgba(255,255,255,0.15);
+    }
+
+    .btn-primary:hover::after {
+      opacity: 1;
+    }
+
+    .btn-secondary {
+      background: transparent;
+      color: var(--fg);
+      font-weight: 500;
+      font-size: 14px;
+      padding: 12px 28px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255,255,255,0.03);
+      border-color: var(--muted);
+    }
+
+    /* Cards */
+    .card {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 28px;
+      transition: all 0.4s ease;
+    }
+
+    .card:hover {
+      border-color: rgba(255,255,255,0.1);
+      transform: translateY(-2px);
+    }
+
+    .pricing-card.featured {
+      border-color: rgba(255,255,255,0.15);
+      position: relative;
+    }
+
+    .pricing-card.featured::before {
+      content: '';
+      position: absolute;
+      inset: -1px;
+      border-radius: 20px;
+      padding: 1px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.15) 0%, transparent 50%);
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      pointer-events: none;
+    }
+
+    /* Navigation */
+    nav {
+      background: rgba(9, 9, 11, 0.8);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .nav-link {
+      color: var(--muted);
+      font-size: 14px;
+      transition: color 0.3s;
+    }
+
+    .nav-link:hover {
+      color: var(--fg);
+    }
+
+    /* Demo UI */
+    .demo-interface {
+      position: relative;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      overflow: hidden;
+    }
+
+    .demo-interface::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 80px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.02) 0%, transparent 100%);
+      pointer-events: none;
+    }
+
+    /* Waveform */
+    .waveform-container {
+      height: 80px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      padding: 0 20px;
+    }
+
+    .wave-bar {
+      width: 3px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 3px;
+      transition: all 0.15s ease;
+    }
+
+    .wave-bar.active {
+      background: rgba(255,255,255,0.8);
+    }
+
+    /* Stats */
+    .stat-item {
+      text-align: center;
+    }
+
+    .stat-number {
+      font-size: 2.5rem;
+      font-weight: 300;
+      letter-spacing: -0.02em;
+      background: linear-gradient(180deg, #fff 0%, #71717a 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    /* Integration logos */
+    .integration-item {
+      opacity: 0.3;
+      transition: opacity 0.3s;
+    }
+
+    .integration-item:hover {
+      opacity: 0.8;
+    }
+
+    /* Divider */
+    .divider {
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* Mobile menu */
+    .mobile-menu {
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      z-index: 100;
+      padding: 100px 24px 24px;
+      transform: translateX(100%);
+      transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .mobile-menu.active {
+      transform: translateX(0);
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--bg);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 3px;
+    }
+
+    /* Light line accent */
+    .light-line {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+    }
+
+    /* Floating label 
+    .floating-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      background: var(--bg);
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }*/
+  </style>
+</head>
+<body>
+
+  <!-- Navigation -->
+  <nav class="fixed top-0 left-0 right-0 z-50">
+    <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+      <a href="#" class="flex items-center gap-2">
+        <div class="w-8 h-8 rounded-lg bg-white flex items-center justify-center">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#09090b" stroke-width="2.5">
+            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" x2="12" y1="19" y2="22"/>
+          </svg>
+        </div>
+        <span class="font-medium tracking-tight">VoiceForge</span>
+      </a>
+      
+      <div class="hidden md:flex items-center gap-8">
+        <a href="#features" class="nav-link">Features</a>
+        <a href="#pricing" class="nav-link">Pricing</a>
+        <a href="#integrations" class="nav-link">Integrations</a>
+        <a href="#cases" class="nav-link">Cases</a>
+      </div>
+      
+      <div class="hidden md:flex items-center gap-3">
+        <button class="btn-secondary py-2 px-4 text-sm">Sign in</button>
+        <button class="btn-primary py-2 px-4 text-sm">Get started</button>
+      </div>
+      
+      <button id="menuBtn" class="md:hidden p-2 -mr-2" aria-label="Menu">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <line x1="4" y1="6" x2="20" y2="6"/>
+          <line x1="4" y1="12" x2="20" y2="12"/>
+          <line x1="4" y1="18" x2="20" y2="18"/>
+        </svg>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Mobile Menu -->
+  <div id="mobileMenu" class="mobile-menu">
+    <button id="closeMenu" class="absolute top-4 right-6 p-2" aria-label="Close">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <line x1="6" y1="6" x2="18" y2="18"/>
+        <line x1="6" y1="18" x2="18" y2="6"/>
+      </svg>
+    </button>
+    <div class="flex flex-col gap-6">
+      <a href="#features" class="text-xl font-light">Features</a>
+      <a href="#pricing" class="text-xl font-light">Pricing</a>
+      <a href="#integrations" class="text-xl font-light">Integrations</a>
+      <a href="#cases" class="text-xl font-light">Cases</a>
+      <div class="divider my-4"></div>
+      <button class="btn-secondary w-full">Sign in</button>
+      <button class="btn-primary w-full">Get started</button>
+    </div>
+  </div>
+
+  <!-- Hero Section - Center Focused -->
+  <section class="relative min-h-screen flex items-center justify-center pt-16 pb-20">
+    <div class="hero-glow"></div>
+    
+    <div class="relative z-10 max-w-6xl mx-auto px-6 w-full flex flex-col items-center text-center">
+      
+      <!-- Badge -->
+      <div class="reveal mb-8">
+        <span class="floating-label"></span>
+      </div>
+      
+      <!-- Main Headline - Made Bolder -->
+      <h1 class="reveal reveal-delay-1 text-4xl md:text-6xl lg:text-7xl font-normal leading-[1.1] tracking-tight max-w-4xl mb-6">
+        Transform text into natural speech
+      </h1>
+      
+      <!-- Subheadline -->
+      <p class="reveal reveal-delay-2 text-lg md:text-xl text-[var(--muted)] font-light max-w-2xl mb-10">
+        Build voice-enabled experiences with our simple API. High-quality neural voices for any application.
+      </p>
+      
+      <!-- CTA Buttons -->
+      <div class="reveal reveal-delay-3 flex flex-wrap justify-center gap-3 mb-16">
+        <button class="btn-primary">Start free trial</button>
+        <button class="btn-secondary">View documentation</button>
+      </div>
+
+      <!-- Central Demo Interface -->
+      <div class="reveal reveal-delay-4 w-full max-w-3xl mb-20">
+        <div class="demo-interface p-6">
+          
+          <!-- Top bar -->
+          <div class="flex items-center justify-between mb-6">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-xs font-medium">S</div>
+              <div class="text-left">
+                <div class="text-sm">Sarah <span class="text-[var(--muted)]">• Professional</span></div>
+                <div class="text-xs text-[var(--muted)]">American English, Female</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <div class="w-2 h-2 rounded-full bg-green-500/50 animate-pulse"></div>
+              <span class="text-xs text-[var(--muted)]">Ready</span>
+            </div>
+          </div>
+
+          <!-- Input Text Area -->
+          <div class="bg-black/20 rounded-xl p-4 mb-6 text-left border border-white/5">
+            <p class="text-sm text-[var(--muted)] leading-relaxed">
+              "Welcome to VoiceForge AI, where innovation meets simplicity. Transform your ideas into compelling audio experiences with just a few lines of code."
+            </p>
+          </div>
+
+          <!-- Waveform Visualization -->
+          <div class="waveform-container mb-6" id="waveform">
+            <!-- Bars generated by JS -->
+          </div>
+
+          <!-- Controls -->
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-4">
+              <button id="playBtn" class="w-12 h-12 rounded-full bg-white flex items-center justify-center transition-all hover:scale-105" aria-label="Play">
+                <svg id="playIcon" width="16" height="16" viewBox="0 0 24 24" fill="#09090b">
+                  <polygon points="6 3 20 12 6 21 6 3"/>
+                </svg>
+                <svg id="pauseIcon" width="16" height="16" viewBox="0 0 24 24" fill="#09090b" class="hidden">
+                  <rect x="5" y="3" width="4" height="18"/>
+                  <rect x="15" y="3" width="4" height="18"/>
+                </svg>
+              </button>
+              <div>
+                <div class="text-sm mb-1">Sample Narration</div>
+                <div class="text-xs text-[var(--muted)]">High Quality • 24kHz</div>
+              </div>
+            </div>
+            
+            <div class="flex items-center gap-4">
+              <span id="time" class="text-sm text-[var(--muted)] tabular-nums">0:00 / 0:12</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stats Row -->
+      <div class="reveal grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-16 w-full max-w-3xl">
+        <div class="stat-item">
+          <div class="stat-number">50M+</div>
+          <div class="text-xs text-[var(--muted)] uppercase tracking-wider mt-1">Audio Generated</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-number">32</div>
+          <div class="text-xs text-[var(--muted)] uppercase tracking-wider mt-1">Languages</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-number">100+</div>
+          <div class="text-xs text-[var(--muted)] uppercase tracking-wider mt-1">Voice Models</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-number">&lt;300</div>
+          <div class="text-xs text-[var(--muted)] uppercase tracking-wider mt-1">MS Latency</div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <div class="light-line"></div>
+
+  <!-- Features -->
+  <section id="features" class="py-24">
+    <div class="max-w-6xl mx-auto px-6">
+      <div class="text-center mb-16">
+        <h2 class="reveal text-3xl md:text-4xl font-light tracking-tight mb-4">
+          Simplified voice integration
+        </h2>
+        <p class="reveal reveal-delay-1 text-[var(--muted)] max-w-lg mx-auto">
+          Everything you need to add natural voice to your applications
+        </p>
+      </div>
+      
+      <div class="grid md:grid-cols-3 gap-5">
+        <div class="reveal card">
+          <div class="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center mb-5">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--fg)" stroke-width="1.5">
+              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+              <line x1="12" x2="12" y1="19" y2="22"/>
+            </svg>
+          </div>
+          <h3 class="font-medium mb-2">Natural synthesis</h3>
+          <p class="text-sm text-[var(--muted)] leading-relaxed">Human-like voices with authentic intonation, emotion, and natural breathing patterns.</p>
+        </div>
+        
+        <div class="reveal reveal-delay-1 card">
+          <div class="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center mb-5">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--fg)" stroke-width="1.5">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="2" y1="12" x2="22" y2="12"/>
+              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10"/>
+            </svg>
+          </div>
+          <h3 class="font-medium mb-2">32+ languages</h3>
+          <p class="text-sm text-[var(--muted)] leading-relaxed">Multilingual support with native pronunciation and regional accent options.</p>
+        </div>
+        
+        <div class="reveal reveal-delay-2 card">
+          <div class="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center mb-5">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--fg)" stroke-width="1.5">
+              <polyline points="16 18 22 12 16 6"/>
+              <polyline points="8 6 2 12 8 18"/>
+            </svg>
+          </div>
+          <h3 class="font-medium mb-2">Simple API</h3>
+          <p class="text-sm text-[var(--muted)] leading-relaxed">RESTful API with SDKs for Python, Node.js, and more. Integrate in minutes.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="light-line"></div>
+
+  <!-- Pricing -->
+  <section id="pricing" class="py-24 bg-[var(--bg-elevated)]">
+    <div class="max-w-6xl mx-auto px-6">
+      <div class="text-center mb-16">
+        <h2 class="reveal text-3xl md:text-4xl font-light tracking-tight mb-4">
+          Pricing
+        </h2>
+        <p class="reveal reveal-delay-1 text-[var(--muted)]">
+          Start free, scale as you grow
+        </p>
+      </div>
+      
+      <div class="grid md:grid-cols-3 gap-5 max-w-4xl mx-auto">
+        <!-- Free -->
+        <div class="reveal card">
+          <div class="text-sm text-[var(--muted)] mb-1">Free</div>
+          <div class="text-3xl font-light mb-1">$0<span class="text-sm text-[var(--muted)]">/mo</span></div>
+          <div class="text-xs text-[var(--muted)] mb-6">10,000 characters</div>
+          <ul class="space-y-2 mb-8 text-sm text-[var(--muted)]">
+            <li class="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+              10 voice models
+            </li>
+            <li class="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+              Standard quality
+            </li>
+            <li class="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+              API access
+            </li>
+          </ul>
+          <button class="btn-secondary w-full text-sm">Get started</button>
+        </div>
+        
+        <!-- Standard -->
+        <div class="reveal reveal-delay-1 card pricing-card featured">
+          <div class="text-sm text-[var(--muted)] mb-1">Standard</div>
+          <div class="text-3xl font-light mb-1">$85<span class="text-sm text-[var(--muted)]">/mo</span></div>
+          <div class="text-xs text-[var(--muted)] mb-6">100,000 characters</div>
+          <ul class="space-y-2 mb-8 text-sm text-[var(--muted)]">
+            <li class="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+              100+ voice models
+            </li>
+            <li class="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+              High quality audio
+            </li>
+            <li class="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+              Voice cloning
+            </li>
+            <li class="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+              Priority support
+            </li>
+          </ul>
+          <button class="btn-primary w-full text-sm">Start trial</button>
+        </div>
+        
+        <!-- Premium -->
+        <div class="reveal reveal-delay-2 card">
+          <div class="text-sm text-[var(--muted)] mb-1">Premium</div>
+          <div class="text-3xl font-light mb-1">$120<span class="text-sm text-[var(--muted)]">/mo</span></div>
+          <div class="text-xs text-[var(--muted)] mb-6">500,000 characters</div>
+          <ul class="space-y-2 mb-8 text-sm text-[var(--muted)]">
+            <li class="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+              All voice models
+            </li>
+            <li class="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+              Ultra quality
+            </li>
+            <li class="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+              Real-time streaming
+            </li>
+            <li class="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+              Dedicated support
+            </li>
+          </ul>
+          <button class="btn-secondary w-full text-sm">Contact sales</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="light-line"></div>
+
+  <!-- Integrations -->
+  <section id="integrations" class="py-24">
+    <div class="max-w-6xl mx-auto px-6">
+      <div class="text-center mb-16">
+        <h2 class="reveal text-3xl md:text-4xl font-light tracking-tight mb-4">
+          Integrations
+        </h2>
+      </div>
+      
+      <div class="reveal flex flex-wrap justify-center items-center gap-10">
+        <div class="integration-item">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="var(--fg)">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.44 9.8 8.2 11.38.6.11.82-.26.82-.58v-2.23c-3.34.73-4.04-1.42-4.04-1.42-.55-1.39-1.33-1.76-1.33-1.76-1.09-.74.08-.73.08-.73 1.2.08 1.84 1.24 1.84 1.24 1.07 1.83 2.8 1.3 3.49 1 .11-.78.42-1.3.76-1.6-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.13-.3-.54-1.52.11-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 016.01 0c2.29-1.55 3.3-1.23 3.3-1.23.65 1.66.24 2.88.12 3.18a4.65 4.65 0 011.23 3.22c0 4.61-2.8 5.63-5.48 5.92.43.37.82 1.1.82 2.22v3.29c0 .32.22.7.82.58A12 12 0 0024 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+        </div>
+        <div class="integration-item">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="var(--fg)">
+            <path d="M22.2 14.4L21 13.7c.1-.4.1-.8.1-1.2l-.1-1.2 1.2-.7c.4-.2.5-.6.3-1l-.7-1.2c-.2-.4-.6-.5-1-.3l-1.2.7c-.3-.3-.7-.5-1.1-.7l-.1-1.3c0-.4-.4-.8-.9-.8h-1.4c-.5 0-.9.4-.9.8l-.1 1.3c-.4.2-.8.4-1.1.7l-1.2-.7c-.4-.2-.8-.1-1 .3l-.7 1.2c-.2.4-.1.8.3 1l1.2.7v1.2l-.1 1.2-1.2.7c-.4.2-.5.6-.3 1l.7 1.2c.2.4.6.5 1 .3l1.2-.7c.3.3.7.5 1.1.7l.1 1.3c0 .4.4.8.9.8h1.4c.5 0 .9-.4.9-.8l.1-1.3c.4-.2.8-.4 1.1-.7l1.2.7c.4.2.8.1 1-.3l.7-1.2c.2-.4.1-.8-.3-1z"/>
+          </svg>
+        </div>
+        <div class="integration-item">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="var(--fg)">
+            <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8l8 5 8-5v10zm-8-7L4 6h16l-8 5z"/>
+          </svg>
+        </div>
+        <div class="integration-item">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="var(--fg)">
+            <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
+          </svg>
+        </div>
+        <div class="integration-item">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="var(--fg)">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="light-line"></div>
+
+  <!-- Case Studies -->
+  <section id="cases" class="py-24 bg-[var(--bg-elevated)]">
+    <div class="max-w-6xl mx-auto px-6">
+      <div class="text-center mb-16">
+        <h2 class="reveal text-3xl md:text-4xl font-light tracking-tight mb-4">
+          Success stories
+        </h2>
+      </div>
+      
+      <div class="grid md:grid-cols-2 gap-5">
+        <div class="reveal card">
+          <p class="text-[var(--muted)] text-sm leading-relaxed mb-6">
+            "VoiceForge reduced our audiobook production time by 80%. The natural intonation is indistinguishable from human narrators."
+          </p>
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-sm">MC</div>
+            <div>
+              <div class="text-sm">MediaCorp</div>
+              <div class="text-xs text-[var(--muted)]">Entertainment</div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="reveal reveal-delay-1 card">
+          <p class="text-[var(--muted)] text-sm leading-relaxed mb-6">
+            "We localized our entire course catalog into 15 languages. Student engagement increased by 45% after adding voice narration."
+          </p>
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-sm">EL</div>
+            <div>
+              <div class="text-sm">EduLearn</div>
+              <div class="text-xs text-[var(--muted)]">Education</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="light-line"></div>
+
+  <!-- CTA -->
+  <section class="py-24">
+    <div class="max-w-6xl mx-auto px-6 text-center">
+      <h2 class="reveal text-3xl md:text-4xl font-light tracking-tight mb-4">
+        Start building today
+      </h2>
+      <p class="reveal reveal-delay-1 text-[var(--muted)] mb-8">
+        Free trial with 10,000 characters. No credit card required.
+      </p>
+      <div class="reveal reveal-delay-2 flex justify-center gap-3">
+        <button class="btn-primary">Get started free</button>
+        <button class="btn-secondary">Talk to sales</button>
+      </div>
+    </div>
+  </section>
+
+  <div class="light-line"></div>
+
+  <!-- Footer -->
+  <footer class="py-16">
+    <div class="max-w-6xl mx-auto px-6">
+      <div class="grid md:grid-cols-4 gap-10 mb-12">
+        <div>
+          <div class="flex items-center gap-2 mb-4">
+            <div class="w-8 h-8 rounded-lg bg-white flex items-center justify-center">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#09090b" stroke-width="2.5">
+                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                <line x1="12" x2="12" y1="19" y2="22"/>
+              </svg>
+            </div>
+            <span class="font-medium">VoiceForge</span>
+          </div>
+          <p class="text-xs text-[var(--muted)]">Neural voice generation powered by ElevenLabs</p>
+        </div>
+        
+        <div>
+          <div class="text-xs text-[var(--muted)] uppercase tracking-wider mb-4">Product</div>
+          <ul class="space-y-2 text-sm">
+            <li><a href="#" class="text-[var(--muted)] hover:text-[var(--fg)] transition-colors">Features</a></li>
+            <li><a href="#" class="text-[var(--muted)] hover:text-[var(--fg)] transition-colors">Pricing</a></li>
+            <li><a href="#" class="text-[var(--muted)] hover:text-[var(--fg)] transition-colors">API</a></li>
+          </ul>
+        </div>
+        
+        <div>
+          <div class="text-xs text-[var(--muted)] uppercase tracking-wider mb-4">Company</div>
+          <ul class="space-y-2 text-sm">
+            <li><a href="#" class="text-[var(--muted)] hover:text-[var(--fg)] transition-colors">About</a></li>
+            <li><a href="#" class="text-[var(--muted)] hover:text-[var(--fg)] transition-colors">Blog</a></li>
+            <li><a href="#" class="text-[var(--muted)] hover:text-[var(--fg)] transition-colors">Contact</a></li>
+          </ul>
+        </div>
+        
+        <div>
+          <div class="text-xs text-[var(--muted)] uppercase tracking-wider mb-4">Legal</div>
+          <ul class="space-y-2 text-sm">
+            <li><a href="#" class="text-[var(--muted)] hover:text-[var(--fg)] transition-colors">Privacy</a></li>
+            <li><a href="#" class="text-[var(--muted)] hover:text-[var(--fg)] transition-colors">Terms</a></li>
+          </ul>
+        </div>
+      </div>
+      
+      <div class="divider mb-8"></div>
+      
+      <div class="flex justify-between items-center text-xs text-[var(--muted)]">
+        <span>2025 VoiceForge</span>
+        <div class="flex gap-4">
+          <a href="#" class="hover:text-[var(--fg)] transition-colors">Twitter</a>
+          <a href="#" class="hover:text-[var(--fg)] transition-colors">GitHub</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // Initialize all variables first
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    
+    // Mobile menu
+    const menuBtn = document.getElementById('menuBtn');
+    const closeMenu = document.getElementById('closeMenu');
+    const mobileMenu = document.getElementById('mobileMenu');
+    
+    menuBtn.addEventListener('click', () => {
+      mobileMenu.classList.add('active');
+      document.body.style.overflow = 'hidden';
+    });
+    
+    closeMenu.addEventListener('click', () => {
+      mobileMenu.classList.remove('active');
+      document.body.style.overflow = '';
+    });
+    
+    mobileMenu.querySelectorAll('a').forEach(link => {
+      link.addEventListener('click', () => {
+        mobileMenu.classList.remove('active');
+        document.body.style.overflow = '';
+      });
+    });
+    
+    // Scroll reveal
+    const revealElements = document.querySelectorAll('.reveal');
+    
+    const revealObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+        }
+      });
+    }, {
+      threshold: 0.1,
+      rootMargin: '0px 0px -50px 0px'
+    });
+    
+    revealElements.forEach(el => revealObserver.observe(el));
+    
+    // Waveform Generator
+    const waveformContainer = document.getElementById('waveform');
+    const barCount = 60;
+    const bars = [];
+    
+    for (let i = 0; i < barCount; i++) {
+      const bar = document.createElement('div');
+      bar.className = 'wave-bar';
+      bar.style.height = '4px';
+      waveformContainer.appendChild(bar);
+      bars.push(bar);
+    }
+    
+    // Play button logic
+    const playBtn = document.getElementById('playBtn');
+    const playIcon = document.getElementById('playIcon');
+    const pauseIcon = document.getElementById('pauseIcon');
+    const timeEl = document.getElementById('time');
+    
+    let isPlaying = false;
+    let progressValue = 0;
+    let animationId = null;
+    let progressInterval = null;
+    
+    function animateWaveform() {
+      if (!isPlaying) return;
+      
+      bars.forEach((bar, i) => {
+        const normalizedIndex = i / barCount;
+        // Create a smooth wave pattern
+        const wave1 = Math.sin(Date.now() * 0.003 + i * 0.15) * 0.5 + 0.5;
+        const wave2 = Math.sin(Date.now() * 0.005 + i * 0.2) * 0.3 + 0.5;
+        const wave3 = Math.sin(Date.now() * 0.008 + i * 0.1) * 0.2 + 0.5;
+        
+        const combined = (wave1 + wave2 + wave3) / 3;
+        const height = Math.max(4, combined * 50);
+        
+        bar.style.height = `${height}px`;
+        bar.classList.add('active');
+      });
+      
+      animationId = requestAnimationFrame(animateWaveform);
+    }
+    
+    function resetWaveform() {
+      bars.forEach(bar => {
+        bar.style.height = '4px';
+        bar.classList.remove('active');
+      });
+    }
+    
+    playBtn.addEventListener('click', () => {
+      isPlaying = !isPlaying;
+      
+      if (isPlaying) {
+        playIcon.classList.add('hidden');
+        pauseIcon.classList.remove('hidden');
+        animateWaveform();
+        
+        progressInterval = setInterval(() => {
+          progressValue += 0.83;
+          if (progressValue >= 100) {
+            progressValue = 0;
+            isPlaying = false;
+            playIcon.classList.remove('hidden');
+            pauseIcon.classList.add('hidden');
+            clearInterval(progressInterval);
+            cancelAnimationFrame(animationId);
+            resetWaveform();
+          }
+          
+          const seconds = Math.floor((progressValue / 100) * 12);
+          timeEl.textContent = `0:${seconds.toString().padStart(2, '0')} / 0:12`;
+        }, 100);
+      } else {
+        playIcon.classList.remove('hidden');
+        pauseIcon.classList.add('hidden');
+        cancelAnimationFrame(animationId);
+        clearInterval(progressInterval);
+        resetWaveform();
+      }
+    });
+    
+    // Smooth scroll
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+      anchor.addEventListener('click', function(e) {
+        e.preventDefault();
+        const target = document.querySelector(this.getAttribute('href'));
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
+    });
+  </script>
+</body>
+</html>
